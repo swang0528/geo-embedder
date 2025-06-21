@@ -4,6 +4,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR  # Import the scheduler
 import argparse
 from tqdm import tqdm
 import time
@@ -98,7 +99,10 @@ def main(args):
     # 2. Model, Loss, Optimizer
     model = CGEM().to(args.device)
     loss_fn = ComplexLoss(lambda_sim=args.lambda_sim)
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    # --- UPDATED: Use AdamW optimizer ---
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # --- NEW: Add learning rate scheduler ---
+    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
     best_val_loss = float('inf')
 
@@ -118,6 +122,11 @@ def main(args):
             u1, u2 = model(g1), model(g2)
             loss = loss_fn(u1, u2, rot_target, sim_target)
             loss.backward()
+
+            # --- NEW: Add gradient clipping ---
+            if args.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+
             optimizer.step()
 
             train_loss_accumulator += loss.item()
@@ -138,11 +147,15 @@ def main(args):
 
         avg_val_loss = val_loss_accumulator / len(val_loader)
 
+        # --- NEW: Step the scheduler after each epoch ---
+        scheduler.step()
+
         # --- Update Plot ---
         if plotter:
             plotter.update(epoch + 1, avg_train_loss, avg_val_loss)
 
-        tqdm.write(f"Epoch {epoch + 1}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        tqdm.write(
+            f"Epoch {epoch + 1}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
 
         # 5. Save best model
         if avg_val_loss < best_val_loss:
@@ -176,6 +189,9 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=16, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--lambda-sim', type=float, default=1.0, help='Weight for the similarity loss component')
+    # --- NEW Hyperparameters ---
+    parser.add_argument('--weight-decay', type=float, default=1e-2, help='Weight decay for AdamW optimizer')
+    parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping value (0 to disable)')
 
     # System & Visualization
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu",
@@ -185,8 +201,7 @@ if __name__ == '__main__':
 
     # Testing
     parser.add_argument('--smoke-test', action='store_true', help='Run a quick smoke test with minimal data')
-    parser.add_argument('--model-id', type=str, default="cgem_test",)
+    parser.add_argument('--model-id', type=str, default="cgem_test", )
 
     args = parser.parse_args()
     main(args)
-
