@@ -1,2 +1,2 @@
 # Tell the training script exactly where to find the cached files
-python train.py --train-cache "C:\Users\Siyang_Wang_work\Documents\A_IndependentResearch\GenAI\LayoutML\Geo-Embedder\dataset\run_dataset_062025\cgem_train.pkl" --val-cache "C:\Users\Siyang_Wang_work\Documents\A_IndependentResearch\GenAI\LayoutML\Geo-Embedder\dataset\run_dataset_062025\cgem_val.pkl" --epochs 40 --model-id "cgem_062025-1"
+python train.py --train-cache "C:\Users\Siyang_Wang_work\Documents\A_IndependentResearch\GenAI\LayoutML\Geo-Embedder\dataset\run_dataset_062125\cgem_train.pkl" --val-cache "C:\Users\Siyang_Wang_work\Documents\A_IndependentResearch\GenAI\LayoutML\Geo-Embedder\dataset\run_dataset_062125\cgem_val.pkl" --epochs 70 --model-id "cgem_062125-1"

@@ -5,31 +5,78 @@ import torch.nn.functional as F
 import math
 
 
-class CGEM(nn.Module):
-    """The Complex Geometric Embedding Model using a Transformer Encoder."""
+class PositionalEncoding(nn.Module):
+    """
+    Standard Positional Encoding implementation, as used in "Attention is All You Need".
+    This injects information about the relative or absolute position of the tokens in the sequence.
+    """
 
-    def __init__(self, input_dim=2, model_dim=128, output_m=16, nhead=8, num_encoder_layers=4, dim_feedforward=512,
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
+
+
+class CGEM(nn.Module):
+    """
+    The Complex Geometric Embedding Model (Order-Aware Version).
+    This version uses a Transformer Encoder to process sequences of rich geometric feature vectors.
+    """
+
+    # --- UPDATED: Input dimension is now 8 to handle the new features ---
+    def __init__(self, input_dim=8, model_dim=128, output_m=16, nhead=8, num_encoder_layers=4, dim_feedforward=512,
                  dropout=0.1):
         super().__init__()
         self.model_dim = model_dim
         self.input_embedding = nn.Linear(input_dim, model_dim)
+
+        # --- NEW: Add the PositionalEncoding layer ---
+        self.pos_encoder = PositionalEncoding(d_model=model_dim, dropout=dropout)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=model_dim,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-            batch_first=True
+            batch_first=True  # Important: Input shape is (Batch, Seq, Feature)
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
 
         self.output_head = nn.Linear(model_dim, 2 * output_m)
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
-        # src shape: (batch_size, seq_len, input_dim) e.g., (B, 128, 2)
+        # src shape: (B, seq_len, input_dim) e.g., (B, 128, 8)
+
+        # 1. Embed input and scale
         x = self.input_embedding(src) * math.sqrt(self.model_dim)
+
+        # 2. Add positional encoding
+        # Note: We need to transpose for the standard PositionalEncoding layer
+        x = x.transpose(0, 1)  # (seq_len, B, model_dim)
+        x = self.pos_encoder(x)
+        x = x.transpose(0, 1)  # (B, seq_len, model_dim)
+
+        # 3. Pass through Transformer encoder
         x = self.transformer_encoder(x)
+
+        # 4. Aggregate features (pooling)
         x = x.mean(dim=1)  # Global average pooling -> (B, model_dim)
+
+        # 5. Map to complex embedding space
         x = self.output_head(x)  # (B, 2 * m)
 
         # Reshape to (B, m, 2) and convert to complex type
@@ -68,16 +115,17 @@ if __name__ == '__main__':
     """
     Simple test block for the model and loss function.
     """
-    print("--- Running model.py self-test ---")
+    print("--- Running model.py self-test (Order-Aware Version) ---")
 
     # Test parameters
     batch_size = 4
     n_resample = 128
-    input_dim = 2
+    # --- UPDATED: input_dim is now 8 ---
+    input_dim = 8
     output_m = 16
 
     # 1. Model forward pass test
-    model = CGEM()
+    model = CGEM(input_dim=input_dim)
     dummy_input = torch.randn(batch_size, n_resample, input_dim)
     output = model(dummy_input)
 
@@ -101,4 +149,3 @@ if __name__ == '__main__':
     print(f"[PASS] Loss function produced a non-negative value: {loss.item():.4f}")
 
     print("--- model.py self-test complete ---")
-

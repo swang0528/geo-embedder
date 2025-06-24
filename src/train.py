@@ -91,10 +91,11 @@ def main(args):
     train_dataset = PolygonDataset(num_pairs=args.num_train_pairs, cache_path=args.train_cache,
                                    force_regenerate=force_regen)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers,
-                              pin_memory=True)
+                              pin_memory=True, persistent_workers=True)
 
     val_dataset = PolygonDataset(num_pairs=args.num_val_pairs, cache_path=args.val_cache, force_regenerate=force_regen)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True,
+                            persistent_workers=True)
 
     # 2. Model, Loss, Optimizer
     model = CGEM().to(args.device)
@@ -161,7 +162,7 @@ def main(args):
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             # TODO: need more robust dir naming
-            save_model_dir = rf"C:\Users\Siyang_Wang_work\Documents\A_IndependentResearch\GenAI\LayoutML\Geo-Embedder\dataset\{args.model_id}"
+            save_model_dir = rf"C:\Users\Siyang_Wang_work\Documents\A_IndependentResearch\GenAI\LayoutML\Geo-Embedder\models_db\{args.model_id}"
             if not os.path.exists(save_model_dir):
                 os.makedirs(save_model_dir)
             torch.save(model.state_dict(), os.path.join(save_model_dir, 'cgem_best_model.pth'))
@@ -196,7 +197,7 @@ if __name__ == '__main__':
     # System & Visualization
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu",
                         help='Device to train on')
-    parser.add_argument('--num-workers', type=int, default=4, help='Number of workers for DataLoader')
+    parser.add_argument('--num-workers', type=int, default=1, help='Number of workers for DataLoader')
     parser.add_argument('--no-plot', action='store_true', help='Disable real-time plotting')
 
     # Testing
